@@ -13,7 +13,7 @@ st.set_page_config(layout="wide", page_title="SG Energy Dashboard")
 col1, col2 = st.columns([1, 6])
 
 with col1:
-    st.image("SG logo1.jpg", width=110)  # 👉 place logo.png in same folder
+    st.image("SG logo1.jpg", width=150)  # 👉 place logo.png in same folder
 
 with col2:
     st.markdown(
