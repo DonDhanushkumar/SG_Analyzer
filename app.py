@@ -2,8 +2,24 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 
-st.set_page_config(layout="wide")
-st.title("⚡ Smart Energy Optimization Dashboard")
+# ================================
+# 📌 PAGE CONFIG
+# ================================
+st.set_page_config(layout="wide", page_title="SG Energy Dashboard")
+
+# ================================
+# 📌 LOGO + HEADER
+# ================================
+col1, col2 = st.columns([1, 6])
+
+with col1:
+    st.image("SG logo1.jpg", width=80)  # 👉 place logo.png in same folder
+
+with col2:
+    st.markdown(
+        "<h1 style='color:#2E86C1;'>⚡ SG Smart Energy Optimization Dashboard</h1>",
+        unsafe_allow_html=True
+    )
 
 # ================================
 # 📌 TIME CLASSIFICATION
@@ -39,7 +55,7 @@ if files:
     for file in files:
         name = file.name
 
-        # Load
+        # Load file
         if name.endswith('.csv'):
             df = pd.read_csv(file)
         else:
@@ -64,9 +80,8 @@ if files:
         all_data.append(df)
 
         # ================================
-        # 📌 TOTAL DETECTION (SMART FIX)
+        # 📌 SMART TOTAL DETECTION
         # ================================
-        # Find instrument with highest total energy → treat as TOTAL
         total_candidate = (
             df.groupby('Instrument')['Energy']
             .sum()
@@ -85,7 +100,7 @@ if files:
     instrument_df = pd.concat(instrument_list, ignore_index=True)
 
     # ================================
-    # 🥧 TIME DISTRIBUTION
+    # 🥧 PIE CHART
     # ================================
     st.subheader("🥧 Energy Distribution (Total Only)")
 
@@ -101,7 +116,6 @@ if files:
         values='Energy',
         facet_col='Plant'
     )
-
     st.plotly_chart(fig_pie, use_container_width=True)
 
     # ================================
@@ -116,7 +130,6 @@ if files:
         hole=0.5,
         facet_col='Plant'
     )
-
     st.plotly_chart(fig_donut, use_container_width=True)
 
     # ================================
@@ -131,13 +144,12 @@ if files:
         color='Plant',
         barmode='group'
     )
-
     st.plotly_chart(fig_bar, use_container_width=True)
 
     # ================================
     # 🏭 ALL INSTRUMENTS
     # ================================
-    st.subheader("🏭 All Instruments")
+    st.subheader("🏭 All Instruments (Scrollable View)")
 
     instrument_summary = (
         instrument_df.groupby('Instrument')['Energy']
@@ -146,7 +158,12 @@ if files:
         .sort_values(by='Energy', ascending=False)
     )
 
-    top_n = st.slider("Select Instruments", 10, len(instrument_summary), 50)
+    top_n = st.slider(
+        "Select Number of Instruments",
+        10,
+        len(instrument_summary),
+        50
+    )
 
     fig_inst = px.bar(
         instrument_summary.head(top_n),
@@ -194,7 +211,7 @@ if files:
     pivot_df = pivot_df.sort_values(by='Peak', ascending=False)
 
     top_n_peak = st.slider(
-        "Peak Analysis Instruments",
+        "Top Instruments for Peak Analysis",
         10,
         len(pivot_df),
         50
