@@ -12,7 +12,7 @@ st.set_page_config(layout="wide", page_title="AI Energy Dashboard")
 # ================================
 col1, col2 = st.columns([1,6])
 with col1:
-    st.image("SG logo1.jpg", width=80)
+    st.image("SG logo1.jpg", width=250)
 with col2:
     st.markdown("<h1 style='color:#2E86C1;'>🤖 AI Energy Optimization Dashboard</h1>", unsafe_allow_html=True)
 
