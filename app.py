@@ -93,6 +93,49 @@ if files:
     c3.metric("🌙 Avg Non-Peak", round(non_peak_avg,2))
 
     # ================================
+    # ⏰ TIME CATEGORY ANALYSIS
+    # ================================
+    st.subheader("⏰ Time Category Energy Analysis")
+
+    time_summary = (
+        total_df.groupby('Time_Category')['Energy']
+        .sum()
+        .reset_index()
+    )
+
+    order = ["Morning Peak", "Evening Peak", "Morning Non-Peak", "Evening Non-Peak"]
+    time_summary['Time_Category'] = pd.Categorical(time_summary['Time_Category'], categories=order, ordered=True)
+    time_summary = time_summary.sort_values('Time_Category')
+
+    # BAR CHART
+    fig_time = px.bar(
+        time_summary,
+        x='Time_Category',
+        y='Energy',
+        color='Time_Category',
+        title="Energy Consumption by Time Category"
+    )
+
+    st.plotly_chart(fig_time, use_container_width=True)
+
+    # PERCENTAGE
+    total_val = time_summary['Energy'].sum()
+    time_summary['Percentage'] = (time_summary['Energy'] / total_val) * 100
+
+    fig_percent = px.bar(
+        time_summary,
+        x='Time_Category',
+        y='Percentage',
+        color='Time_Category',
+        text=time_summary['Percentage'].round(2).astype(str) + "%",
+        title="Percentage Contribution"
+    )
+
+    fig_percent.update_traces(textposition='outside')
+
+    st.plotly_chart(fig_percent, use_container_width=True)
+
+    # ================================
     # AI CLASSIFICATION
     # ================================
     instrument_df['Peak_Type'] = instrument_df['Time_Category'].apply(
@@ -159,7 +202,7 @@ if files:
                     use_container_width=True)
 
     # ================================
-    # 🎯 SYSTEM ANALYSIS (SIDE-BY-SIDE)
+    # 🎯 SYSTEM ANALYSIS
     # ================================
     st.subheader("🎯 System Peak vs Non-Peak Comparison")
 
@@ -185,8 +228,7 @@ if files:
     instrument_df['System'] = instrument_df['Instrument'].apply(map_system)
 
     system_peak = (
-        instrument_df
-        .groupby(['System', 'Peak_Type'])['Energy']
+        instrument_df.groupby(['System', 'Peak_Type'])['Energy']
         .sum()
         .reset_index()
     )
@@ -207,14 +249,15 @@ if files:
         value_name='Energy'
     )
 
-    fig = px.bar(
+    fig_sys = px.bar(
         plot_sys,
         x='System',
         y='Energy',
         color='Type',
-        barmode='group'
+        barmode='group',
+        title="System-wise Peak vs Non-Peak"
     )
 
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig_sys, use_container_width=True)
 
     st.success("🚀 Dashboard Running Successfully!")
