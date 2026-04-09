@@ -215,4 +215,4 @@ if files:
     for _, row in top_peak.iterrows():
         st.write(f"⚠️ {row['Instrument']} → High peak consumption")
 
-    st.success("🚀 AI + ML System Ready!")
+    st.success("Dashboard Ready!")
