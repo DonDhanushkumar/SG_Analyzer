@@ -13,7 +13,10 @@ try:
 except:
     ML_AVAILABLE = False
 
-st.set_page_config(layout="wide")
+# ================================
+# PAGE CONFIG
+# ================================
+st.set_page_config(layout="wide", page_title="AI Energy Dashboard")
 
 # ================================
 # HEADER
@@ -22,7 +25,7 @@ col1, col2 = st.columns([1,6])
 with col1:
     st.image("SG logo1.jpg", width=200)
 with col2:
-    st.markdown("<h1 style='color:#2E86C1;'>🚀 Saint-Gobain AI Energy Dashboard</h1>", unsafe_allow_html=True)
+    st.markdown("<h1 style='color:#2E86C1;'>🚀 Saint-Gobain AI Energy Optimization Dashboard</h1>", unsafe_allow_html=True)
 
 # ================================
 # TIME FUNCTION
@@ -47,10 +50,13 @@ if files:
     all_data, total_list, instrument_list = [], [], []
 
     for file in files:
-        df = pd.read_csv(file) if file.name.endswith('.csv') else pd.read_excel(file)
+        name = file.name
+
+        df = pd.read_csv(file) if name.endswith('.csv') else pd.read_excel(file)
         df = df.fillna(0)
 
         if 'Instrument' not in df.columns:
+            st.warning(f"{name} skipped")
             continue
 
         df = df.melt(id_vars=['Instrument'], var_name='Datetime', value_name='Energy')
@@ -59,15 +65,18 @@ if files:
 
         df['Hour'] = df['Datetime'].dt.hour
         df['Time_Category'] = df['Hour'].apply(classify_time)
+        df['Plant'] = name
 
         all_data.append(df)
 
+        # TOTAL detection
         total_candidate = df.groupby('Instrument')['Energy'].sum().idxmax()
         total_list.append(df[df['Instrument'] == total_candidate])
         instrument_list.append(df[df['Instrument'] != total_candidate])
 
-    total_df = pd.concat(total_list)
-    instrument_df = pd.concat(instrument_list)
+    df_all = pd.concat(all_data, ignore_index=True)
+    total_df = pd.concat(total_list, ignore_index=True)
+    instrument_df = pd.concat(instrument_list, ignore_index=True)
 
     # ================================
     # KPI
@@ -84,29 +93,20 @@ if files:
     c3.metric("🌙 Avg Non-Peak", round(non_peak_avg,2))
 
     # ================================
-    # 📊 TIME BAR CHART
+    # TIME DISTRIBUTION
     # ================================
-    st.subheader("📊 Time Category Consumption")
+    st.subheader("🥧 Energy Distribution")
 
-    time_summary = total_df.groupby('Time_Category')['Energy'].sum().reset_index()
+    time_summary = total_df.groupby(['Plant','Time_Category'])['Energy'].sum().reset_index()
 
-    st.plotly_chart(
-        px.bar(time_summary, x='Time_Category', y='Energy', color='Time_Category'),
-        use_container_width=True
-    )
+    st.plotly_chart(px.pie(time_summary, names='Time_Category', values='Energy', facet_col='Plant'),
+                    use_container_width=True)
 
-    # ================================
-    # 🥧 PIE CHART
-    # ================================
-    st.subheader("🥧 Time Distribution (%)")
-
-    st.plotly_chart(
-        px.pie(time_summary, names='Time_Category', values='Energy', hole=0.4),
-        use_container_width=True
-    )
+    st.plotly_chart(px.bar(time_summary, x='Time_Category', y='Energy', color='Plant'),
+                    use_container_width=True)
 
     # ================================
-    # 🤖 AI CLASSIFICATION
+    # AI CLASSIFICATION
     # ================================
     instrument_df['Peak_Type'] = instrument_df['Time_Category'].apply(
         lambda x: 'Peak' if 'Peak' in x else 'Non-Peak'
@@ -116,14 +116,15 @@ if files:
 
     pivot_df = peak_data.pivot(index='Instrument', columns='Peak_Type', values='Energy').fillna(0)
 
-    # FORCE BOTH COLUMNS
-    pivot_df['Peak'] = pivot_df.get('Peak', 0)
-    pivot_df['Non-Peak'] = pivot_df.get('Non-Peak', 0)
+    if 'Peak' not in pivot_df.columns:
+        pivot_df['Peak'] = 0
+    if 'Non-Peak' not in pivot_df.columns:
+        pivot_df['Non-Peak'] = 0
 
     pivot_df = pivot_df.reset_index()
 
     pivot_df['Category'] = pivot_df.apply(
-        lambda x: "Main" if x['Peak'] > x['Non-Peak'] else "Optional",
+        lambda x: "Main" if x.get('Peak',0) > x.get('Non-Peak',0) else "Optional",
         axis=1
     )
 
@@ -131,9 +132,9 @@ if files:
     st.dataframe(pivot_df)
 
     # ================================
-    # 🔮 PREDICTION
+    # 🔮 ADVANCED ML PREDICTION
     # ================================
-    st.subheader("🔮 Prediction")
+    st.subheader("🔮 Advanced ML Prediction")
 
     ts_df = total_df.groupby('Datetime')['Energy'].sum().reset_index().sort_values('Datetime')
     ts_df['t'] = np.arange(len(ts_df))
@@ -149,11 +150,19 @@ if files:
 
         gbr = GradientBoostingRegressor().fit(X,y)
         gbr_pred = gbr.predict(future_t)
+
     else:
+        st.warning("⚠️ sklearn not installed → using fallback prediction")
         lin_pred = np.repeat(ts_df['Energy'].mean(), 24)
         gbr_pred = lin_pred
 
+    # SAFE DATE FIX
     last_date = ts_df['Datetime'].dropna().max()
+
+    if pd.isna(last_date):
+        st.error("❌ Datetime issue")
+        st.stop()
+
     future_dates = pd.date_range(start=last_date, periods=24, freq='h')
 
     df_plot = pd.DataFrame({
@@ -166,52 +175,44 @@ if files:
                     use_container_width=True)
 
     # ================================
-    # 🎯 SYSTEM PEAK vs NON-PEAK
+    # SYSTEM ANALYSIS
     # ================================
-    st.subheader("🎯 System Peak vs Non-Peak Comparison")
+    st.subheader("🎯 System Analysis")
 
     def map_system(name):
         name = str(name).lower()
         if "light" in name or "ac" in name:
             return "Light & AC"
+        elif "mbt-a" in name:
+            return "MBT-A"
+        elif "mbt-b" in name:
+            return "MBT-B"
         elif "process air" in name:
             return "Process Air"
-        elif "stp" in name:
-            return "STP"
         elif "x7" in name:
             return "X7 Bay"
-        elif "cooling" in name:
+        elif "stp" in name:
+            return "STP"
+        elif "cooling" in name or "bus b" in name:
             return "Cooling Circuit Bus B"
         else:
             return "Others"
 
     instrument_df['System'] = instrument_df['Instrument'].apply(map_system)
 
-    system_group = instrument_df.groupby(['System','Peak_Type'])['Energy'].sum().reset_index()
+    system_summary = instrument_df.groupby('System')['Energy'].sum().reset_index()
 
-    pivot_sys = system_group.pivot(index='System', columns='Peak_Type', values='Energy').fillna(0)
+    st.plotly_chart(px.bar(system_summary, x='System', y='Energy', color='System'),
+                    use_container_width=True)
 
-    # FORCE BOTH
-    pivot_sys['Peak'] = pivot_sys.get('Peak', 0)
-    pivot_sys['Non-Peak'] = pivot_sys.get('Non-Peak', 0)
+    # ================================
+    # AI INSIGHTS
+    # ================================
+    st.subheader("🤖 AI Insights")
 
-    pivot_sys = pivot_sys.reset_index()
+    top_peak = pivot_df.sort_values(by='Peak', ascending=False).head(5)
 
-    plot_sys = pivot_sys.melt(
-        id_vars='System',
-        value_vars=['Peak','Non-Peak'],
-        var_name='Type',
-        value_name='Energy'
-    )
+    for _, row in top_peak.iterrows():
+        st.write(f"⚠️ {row['Instrument']} → High peak consumption")
 
-    fig = px.bar(
-        plot_sys,
-        x='System',
-        y='Energy',
-        color='Type',
-        barmode='group'
-    )
-
-    st.plotly_chart(fig, use_container_width=True)
-
-    st.success("🚀 FINAL DASHBOARD READY!")
+    st.success("🚀 AI + ML System Ready!")
