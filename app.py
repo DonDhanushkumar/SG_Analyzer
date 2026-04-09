@@ -16,7 +16,7 @@ except:
 # ================================
 # PAGE CONFIG
 # ================================
-st.set_page_config(layout="wide", page_title="AI Energy Dashboard")
+st.set_page_config(layout="wide")
 
 # ================================
 # HEADER
@@ -25,7 +25,7 @@ col1, col2 = st.columns([1,6])
 with col1:
     st.image("SG logo1.jpg", width=200)
 with col2:
-    st.markdown("<h1 style='color:#2E86C1;'>🚀 Saint-Gobain AI Energy Optimization Dashboard</h1>", unsafe_allow_html=True)
+    st.markdown("<h1 style='color:#2E86C1;'>🚀 Saint-Gobain AI Energy Dashboard</h1>", unsafe_allow_html=True)
 
 # ================================
 # TIME FUNCTION
@@ -69,7 +69,7 @@ if files:
 
         all_data.append(df)
 
-        # TOTAL detection
+        # Detect total automatically
         total_candidate = df.groupby('Instrument')['Energy'].sum().idxmax()
         total_list.append(df[df['Instrument'] == total_candidate])
         instrument_list.append(df[df['Instrument'] != total_candidate])
@@ -91,19 +91,6 @@ if files:
     c1.metric("⚡ Total Energy", round(total_energy,2))
     c2.metric("🔥 Avg Peak", round(peak_avg,2))
     c3.metric("🌙 Avg Non-Peak", round(non_peak_avg,2))
-
-    # ================================
-    # TIME DISTRIBUTION
-    # ================================
-    st.subheader("🥧 Energy Distribution")
-
-    time_summary = total_df.groupby(['Plant','Time_Category'])['Energy'].sum().reset_index()
-
-    st.plotly_chart(px.pie(time_summary, names='Time_Category', values='Energy', facet_col='Plant'),
-                    use_container_width=True)
-
-    st.plotly_chart(px.bar(time_summary, x='Time_Category', y='Energy', color='Plant'),
-                    use_container_width=True)
 
     # ================================
     # AI CLASSIFICATION
@@ -132,9 +119,9 @@ if files:
     st.dataframe(pivot_df)
 
     # ================================
-    # 🔮 ADVANCED ML PREDICTION
+    # 🔮 PREDICTION
     # ================================
-    st.subheader("🔮 Advanced ML Prediction")
+    st.subheader("🔮 Prediction")
 
     ts_df = total_df.groupby('Datetime')['Energy'].sum().reset_index().sort_values('Datetime')
     ts_df['t'] = np.arange(len(ts_df))
@@ -150,13 +137,10 @@ if files:
 
         gbr = GradientBoostingRegressor().fit(X,y)
         gbr_pred = gbr.predict(future_t)
-
     else:
-        st.warning("⚠️ sklearn not installed → using fallback prediction")
         lin_pred = np.repeat(ts_df['Energy'].mean(), 24)
         gbr_pred = lin_pred
 
-    # SAFE DATE FIX
     last_date = ts_df['Datetime'].dropna().max()
 
     if pd.isna(last_date):
@@ -175,9 +159,9 @@ if files:
                     use_container_width=True)
 
     # ================================
-    # SYSTEM ANALYSIS
+    # 🎯 SYSTEM ANALYSIS (SIDE-BY-SIDE)
     # ================================
-    st.subheader("🎯 System Analysis")
+    st.subheader("🎯 System Peak vs Non-Peak Comparison")
 
     def map_system(name):
         name = str(name).lower()
@@ -200,19 +184,37 @@ if files:
 
     instrument_df['System'] = instrument_df['Instrument'].apply(map_system)
 
-    system_summary = instrument_df.groupby('System')['Energy'].sum().reset_index()
+    system_peak = (
+        instrument_df
+        .groupby(['System', 'Peak_Type'])['Energy']
+        .sum()
+        .reset_index()
+    )
 
-    st.plotly_chart(px.bar(system_summary, x='System', y='Energy', color='System'),
-                    use_container_width=True)
+    pivot_sys = system_peak.pivot(index='System', columns='Peak_Type', values='Energy').fillna(0)
 
-    # ================================
-    # AI INSIGHTS
-    # ================================
-    st.subheader("🤖 AI Insights")
+    if 'Peak' not in pivot_sys.columns:
+        pivot_sys['Peak'] = 0
+    if 'Non-Peak' not in pivot_sys.columns:
+        pivot_sys['Non-Peak'] = 0
 
-    top_peak = pivot_df.sort_values(by='Peak', ascending=False).head(5)
+    pivot_sys = pivot_sys.reset_index()
 
-    for _, row in top_peak.iterrows():
-        st.write(f"⚠️ {row['Instrument']} → High peak consumption")
+    plot_sys = pivot_sys.melt(
+        id_vars='System',
+        value_vars=['Peak', 'Non-Peak'],
+        var_name='Type',
+        value_name='Energy'
+    )
 
-    st.success("🚀 AI System Ready!")
+    fig = px.bar(
+        plot_sys,
+        x='System',
+        y='Energy',
+        color='Type',
+        barmode='group'
+    )
+
+    st.plotly_chart(fig, use_container_width=True)
+
+    st.success("🚀 Dashboard Running Successfully!")
