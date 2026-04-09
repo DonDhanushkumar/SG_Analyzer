@@ -1,6 +1,10 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
+import numpy as np
+
+from sklearn.linear_model import LinearRegression
+from sklearn.ensemble import GradientBoostingRegressor
 
 # ================================
 # PAGE CONFIG
@@ -12,9 +16,9 @@ st.set_page_config(layout="wide", page_title="AI Energy Dashboard")
 # ================================
 col1, col2 = st.columns([1,6])
 with col1:
-    st.image("SG logo1.jpg", width=250)
+    st.image("SG logo1.jpg", width=80)
 with col2:
-    st.markdown("<h1 style='color:#2E86C1;'>🤖 AI Energy Optimization Dashboard</h1>", unsafe_allow_html=True)
+    st.markdown("<h1 style='color:#2E86C1;'>🚀 AI + ML Energy Optimization Dashboard</h1>", unsafe_allow_html=True)
 
 # ================================
 # TIME FUNCTION
@@ -49,7 +53,6 @@ if files:
             continue
 
         df = df.melt(id_vars=['Instrument'], var_name='Datetime', value_name='Energy')
-
         df['Datetime'] = pd.to_datetime(df['Datetime'], errors='coerce')
         df = df.dropna(subset=['Datetime'])
 
@@ -69,6 +72,20 @@ if files:
     instrument_df = pd.concat(instrument_list, ignore_index=True)
 
     # ================================
+    # KPI
+    # ================================
+    st.subheader("📊 KPI Dashboard")
+
+    total_energy = total_df['Energy'].sum()
+    peak_avg = total_df[total_df['Time_Category'].str.contains("Peak")]['Energy'].mean()
+    non_peak_avg = total_df[total_df['Time_Category'].str.contains("Non-Peak")]['Energy'].mean()
+
+    c1, c2, c3 = st.columns(3)
+    c1.metric("⚡ Total Energy", round(total_energy,2))
+    c2.metric("🔥 Avg Peak", round(peak_avg,2))
+    c3.metric("🌙 Avg Non-Peak", round(non_peak_avg,2))
+
+    # ================================
     # TIME DISTRIBUTION
     # ================================
     st.subheader("🥧 Energy Distribution")
@@ -78,28 +95,11 @@ if files:
     st.plotly_chart(px.pie(time_summary, names='Time_Category', values='Energy', facet_col='Plant'),
                     use_container_width=True)
 
-    st.plotly_chart(px.pie(time_summary, names='Time_Category', values='Energy', hole=0.5, facet_col='Plant'),
-                    use_container_width=True)
-
     st.plotly_chart(px.bar(time_summary, x='Time_Category', y='Energy', color='Plant'),
                     use_container_width=True)
 
     # ================================
-    # INSTRUMENT ANALYSIS
-    # ================================
-    st.subheader("🏭 All Instruments")
-
-    inst_summary = instrument_df.groupby('Instrument')['Energy'].sum().reset_index().sort_values(by='Energy', ascending=False)
-
-    top_n = st.slider("Select Instruments", 10, len(inst_summary), 50)
-
-    fig = px.bar(inst_summary.head(top_n), x='Instrument', y='Energy')
-    fig.update_layout(xaxis_tickangle=-90, height=600, width=max(1200, top_n*20))
-
-    st.plotly_chart(fig, use_container_width=True)
-
-    # ================================
-    # PEAK vs NON-PEAK
+    # AI CLASSIFICATION
     # ================================
     instrument_df['Peak_Type'] = instrument_df['Time_Category'].apply(
         lambda x: 'Peak' if 'Peak' in x else 'Non-Peak'
@@ -109,7 +109,6 @@ if files:
 
     pivot_df = peak_data.pivot(index='Instrument', columns='Peak_Type', values='Energy').fillna(0)
 
-    # 🔥 FIX (NO ERROR)
     if 'Peak' not in pivot_df.columns:
         pivot_df['Peak'] = 0
     if 'Non-Peak' not in pivot_df.columns:
@@ -117,11 +116,8 @@ if files:
 
     pivot_df = pivot_df.reset_index()
 
-    # ================================
-    # AI CLASSIFICATION
-    # ================================
     pivot_df['Category'] = pivot_df.apply(
-        lambda x: "Main" if x.get('Peak',0) > x.get('Non-Peak',0) else "Optional",
+        lambda x: "Main" if x['Peak'] > x['Non-Peak'] else "Optional",
         axis=1
     )
 
@@ -129,28 +125,57 @@ if files:
     st.dataframe(pivot_df)
 
     # ================================
-    # COST MODEL
+    # 🔮 ADVANCED ML PREDICTION
     # ================================
-    st.subheader("💰 Cost Calculation")
+    st.subheader("🔮 Advanced ML Prediction")
 
-    peak_rate = st.number_input("Peak Rate ₹", value=10)
-    non_peak_rate = st.number_input("Non-Peak Rate ₹", value=6)
+    ts_df = total_df.groupby('Datetime')['Energy'].sum().reset_index().sort_values('Datetime')
 
-    pivot_df['Peak_Cost'] = pivot_df['Peak'] * peak_rate
-    pivot_df['NonPeak_Cost'] = pivot_df['Non-Peak'] * non_peak_rate
+    ts_df['t'] = np.arange(len(ts_df))
 
-    total_cost = pivot_df['Peak_Cost'].sum() + pivot_df['NonPeak_Cost'].sum()
+    X = ts_df[['t']]
+    y = ts_df['Energy']
 
-    st.metric("Total Cost", f"₹ {round(total_cost,2)}")
+    # Linear
+    lin = LinearRegression().fit(X,y)
+    future_t = np.arange(len(ts_df), len(ts_df)+24).reshape(-1,1)
+    lin_pred = lin.predict(future_t)
 
-    cost_df = pivot_df.melt(
-        id_vars='Instrument',
-        value_vars=['Peak_Cost','NonPeak_Cost'],
-        var_name='Type',
-        value_name='Cost'
-    )
+    # XGBoost-style (GBR)
+    gbr = GradientBoostingRegressor().fit(X,y)
+    gbr_pred = gbr.predict(future_t)
 
-    st.plotly_chart(px.bar(cost_df, x='Instrument', y='Cost', color='Type'),
+    # LSTM-style (lag model)
+    lag = 5
+    lag_df = ts_df.copy()
+
+    for i in range(1, lag+1):
+        lag_df[f'lag_{i}'] = lag_df['Energy'].shift(i)
+
+    lag_df = lag_df.dropna()
+
+    X_lag = lag_df[[f'lag_{i}' for i in range(1, lag+1)]]
+    y_lag = lag_df['Energy']
+
+    lag_model = LinearRegression().fit(X_lag, y_lag)
+
+    temp = list(lag_df['Energy'].values[-lag:])
+    lstm_preds = []
+
+    for _ in range(24):
+        pred = lag_model.predict([temp[-lag:]])[0]
+        lstm_preds.append(pred)
+        temp.append(pred)
+
+    future_dates = pd.date_range(start=ts_df['Datetime'].max(), periods=24, freq='H')
+
+    df_plot = pd.DataFrame({
+        'Datetime': list(ts_df['Datetime']) + list(future_dates)*3,
+        'Value': list(ts_df['Energy']) + list(lin_pred) + list(gbr_pred) + list(lstm_preds),
+        'Model': ['Actual']*len(ts_df) + ['Linear']*24 + ['XGBoost']*24 + ['LSTM']*24
+    })
+
+    st.plotly_chart(px.line(df_plot, x='Datetime', y='Value', color='Model'),
                     use_container_width=True)
 
     # ================================
@@ -194,10 +219,4 @@ if files:
     for _, row in top_peak.iterrows():
         st.write(f"⚠️ {row['Instrument']} → High peak consumption")
 
-    st.success("""
-    🤖 Recommendations:
-    ✔ Shift optional loads  
-    ✔ Reduce peak demand  
-    ✔ Optimize system usage  
-    ✔ Save electricity cost  
-    """)
+    st.success("🚀 AI + ML System Ready!")
