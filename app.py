@@ -3,8 +3,15 @@ import pandas as pd
 import plotly.express as px
 import numpy as np
 
-from sklearn.linear_model import LinearRegression
-from sklearn.ensemble import GradientBoostingRegressor
+# ================================
+# SAFE ML IMPORT
+# ================================
+try:
+    from sklearn.linear_model import LinearRegression
+    from sklearn.ensemble import GradientBoostingRegressor
+    ML_AVAILABLE = True
+except:
+    ML_AVAILABLE = False
 
 # ================================
 # PAGE CONFIG
@@ -117,7 +124,7 @@ if files:
     pivot_df = pivot_df.reset_index()
 
     pivot_df['Category'] = pivot_df.apply(
-        lambda x: "Main" if x['Peak'] > x['Non-Peak'] else "Optional",
+        lambda x: "Main" if x.get('Peak',0) > x.get('Non-Peak',0) else "Optional",
         axis=1
     )
 
@@ -130,49 +137,38 @@ if files:
     st.subheader("🔮 Advanced ML Prediction")
 
     ts_df = total_df.groupby('Datetime')['Energy'].sum().reset_index().sort_values('Datetime')
-
     ts_df['t'] = np.arange(len(ts_df))
 
-    X = ts_df[['t']]
-    y = ts_df['Energy']
-
-    # Linear
-    lin = LinearRegression().fit(X,y)
     future_t = np.arange(len(ts_df), len(ts_df)+24).reshape(-1,1)
-    lin_pred = lin.predict(future_t)
 
-    # XGBoost-style (GBR)
-    gbr = GradientBoostingRegressor().fit(X,y)
-    gbr_pred = gbr.predict(future_t)
+    if ML_AVAILABLE:
+        X = ts_df[['t']]
+        y = ts_df['Energy']
 
-    # LSTM-style (lag model)
-    lag = 5
-    lag_df = ts_df.copy()
+        lin = LinearRegression().fit(X,y)
+        lin_pred = lin.predict(future_t)
 
-    for i in range(1, lag+1):
-        lag_df[f'lag_{i}'] = lag_df['Energy'].shift(i)
+        gbr = GradientBoostingRegressor().fit(X,y)
+        gbr_pred = gbr.predict(future_t)
 
-    lag_df = lag_df.dropna()
+    else:
+        st.warning("⚠️ sklearn not installed → using fallback prediction")
+        lin_pred = np.repeat(ts_df['Energy'].mean(), 24)
+        gbr_pred = lin_pred
 
-    X_lag = lag_df[[f'lag_{i}' for i in range(1, lag+1)]]
-    y_lag = lag_df['Energy']
+    # SAFE DATE FIX
+    last_date = ts_df['Datetime'].dropna().max()
 
-    lag_model = LinearRegression().fit(X_lag, y_lag)
+    if pd.isna(last_date):
+        st.error("❌ Datetime issue")
+        st.stop()
 
-    temp = list(lag_df['Energy'].values[-lag:])
-    lstm_preds = []
-
-    for _ in range(24):
-        pred = lag_model.predict([temp[-lag:]])[0]
-        lstm_preds.append(pred)
-        temp.append(pred)
-
-    future_dates = pd.date_range(start=ts_df['Datetime'].max(), periods=24, freq='H')
+    future_dates = pd.date_range(start=last_date, periods=24, freq='h')
 
     df_plot = pd.DataFrame({
-        'Datetime': list(ts_df['Datetime']) + list(future_dates)*3,
-        'Value': list(ts_df['Energy']) + list(lin_pred) + list(gbr_pred) + list(lstm_preds),
-        'Model': ['Actual']*len(ts_df) + ['Linear']*24 + ['XGBoost']*24 + ['LSTM']*24
+        'Datetime': list(ts_df['Datetime']) + list(future_dates)*2,
+        'Value': list(ts_df['Energy']) + list(lin_pred) + list(gbr_pred),
+        'Model': ['Actual']*len(ts_df) + ['Linear']*24 + ['XGBoost']*24
     })
 
     st.plotly_chart(px.line(df_plot, x='Datetime', y='Value', color='Model'),
