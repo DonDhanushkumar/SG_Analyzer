@@ -13,9 +13,6 @@ try:
 except:
     ML_AVAILABLE = False
 
-# ================================
-# PAGE CONFIG
-# ================================
 st.set_page_config(layout="wide")
 
 # ================================
@@ -25,10 +22,10 @@ col1, col2 = st.columns([1,6])
 with col1:
     st.image("SG logo1.jpg", width=200)
 with col2:
-    st.markdown("<h1 style='color:#2E86C1;'>🚀 Saint-Gobain AI Energy Dashboard</h1>", unsafe_allow_html=True)
+    st.markdown("<h1 style='color:#2E86C1;'>🚀 AI Energy Dashboard</h1>", unsafe_allow_html=True)
 
 # ================================
-# TIME FUNCTION
+# TIME CLASSIFICATION
 # ================================
 def classify_time(hour):
     if 6 <= hour <= 9:
@@ -56,7 +53,6 @@ if files:
         df = df.fillna(0)
 
         if 'Instrument' not in df.columns:
-            st.warning(f"{name} skipped")
             continue
 
         df = df.melt(id_vars=['Instrument'], var_name='Datetime', value_name='Energy')
@@ -65,18 +61,15 @@ if files:
 
         df['Hour'] = df['Datetime'].dt.hour
         df['Time_Category'] = df['Hour'].apply(classify_time)
-        df['Plant'] = name
 
         all_data.append(df)
 
-        # Detect total automatically
         total_candidate = df.groupby('Instrument')['Energy'].sum().idxmax()
         total_list.append(df[df['Instrument'] == total_candidate])
         instrument_list.append(df[df['Instrument'] != total_candidate])
 
-    df_all = pd.concat(all_data, ignore_index=True)
-    total_df = pd.concat(total_list, ignore_index=True)
-    instrument_df = pd.concat(instrument_list, ignore_index=True)
+    total_df = pd.concat(total_list)
+    instrument_df = pd.concat(instrument_list)
 
     # ================================
     # KPI
@@ -93,50 +86,39 @@ if files:
     c3.metric("🌙 Avg Non-Peak", round(non_peak_avg,2))
 
     # ================================
-    # ⏰ TIME CATEGORY ANALYSIS
+    # 📊 TIME CATEGORY BAR CHART
     # ================================
-    st.subheader("⏰ Time Category Energy Analysis")
+    st.subheader("📊 Time Category Consumption")
 
-    time_summary = (
-        total_df.groupby('Time_Category')['Energy']
-        .sum()
-        .reset_index()
-    )
+    time_summary = total_df.groupby('Time_Category')['Energy'].sum().reset_index()
 
-    order = ["Morning Peak", "Evening Peak", "Morning Non-Peak", "Evening Non-Peak"]
-    time_summary['Time_Category'] = pd.Categorical(time_summary['Time_Category'], categories=order, ordered=True)
-    time_summary = time_summary.sort_values('Time_Category')
-
-    # BAR CHART
-    fig_time = px.bar(
+    fig_bar = px.bar(
         time_summary,
         x='Time_Category',
         y='Energy',
         color='Time_Category',
-        title="Energy Consumption by Time Category"
+        title="Energy by Time Category"
     )
 
-    st.plotly_chart(fig_time, use_container_width=True)
-
-    # PERCENTAGE
-    total_val = time_summary['Energy'].sum()
-    time_summary['Percentage'] = (time_summary['Energy'] / total_val) * 100
-
-    fig_percent = px.bar(
-        time_summary,
-        x='Time_Category',
-        y='Percentage',
-        color='Time_Category',
-        text=time_summary['Percentage'].round(2).astype(str) + "%",
-        title="Percentage Contribution"
-    )
-
-    fig_percent.update_traces(textposition='outside')
-
-    st.plotly_chart(fig_percent, use_container_width=True)
+    st.plotly_chart(fig_bar, use_container_width=True)
 
     # ================================
-    # AI CLASSIFICATION
+    # 🥧 PIE CHART (%)
+    # ================================
+    st.subheader("🥧 Time Category Percentage")
+
+    fig_pie = px.pie(
+        time_summary,
+        names='Time_Category',
+        values='Energy',
+        hole=0.4,
+        title="Energy Distribution (%)"
+    )
+
+    st.plotly_chart(fig_pie, use_container_width=True)
+
+    # ================================
+    # 🤖 AI CLASSIFICATION
     # ================================
     instrument_df['Peak_Type'] = instrument_df['Time_Category'].apply(
         lambda x: 'Peak' if 'Peak' in x else 'Non-Peak'
@@ -187,7 +169,7 @@ if files:
     last_date = ts_df['Datetime'].dropna().max()
 
     if pd.isna(last_date):
-        st.error("❌ Datetime issue")
+        st.error("Datetime issue")
         st.stop()
 
     future_dates = pd.date_range(start=last_date, periods=24, freq='h')
@@ -202,62 +184,37 @@ if files:
                     use_container_width=True)
 
     # ================================
-    # 🎯 SYSTEM ANALYSIS
+    # 🎯 SYSTEM PEAK vs NON-PEAK
     # ================================
-    st.subheader("🎯 System Peak vs Non-Peak Comparison")
+    st.subheader("🎯 System Peak vs Non-Peak")
 
     def map_system(name):
         name = str(name).lower()
         if "light" in name or "ac" in name:
             return "Light & AC"
-        elif "mbt-a" in name:
-            return "MBT-A"
-        elif "mbt-b" in name:
-            return "MBT-B"
         elif "process air" in name:
             return "Process Air"
-        elif "x7" in name:
-            return "X7 Bay"
         elif "stp" in name:
             return "STP"
-        elif "cooling" in name or "bus b" in name:
+        elif "x7" in name:
+            return "X7 Bay"
+        elif "cooling" in name:
             return "Cooling Circuit Bus B"
         else:
             return "Others"
 
     instrument_df['System'] = instrument_df['Instrument'].apply(map_system)
 
-    system_peak = (
-        instrument_df.groupby(['System', 'Peak_Type'])['Energy']
-        .sum()
-        .reset_index()
-    )
-
-    pivot_sys = system_peak.pivot(index='System', columns='Peak_Type', values='Energy').fillna(0)
-
-    if 'Peak' not in pivot_sys.columns:
-        pivot_sys['Peak'] = 0
-    if 'Non-Peak' not in pivot_sys.columns:
-        pivot_sys['Non-Peak'] = 0
-
-    pivot_sys = pivot_sys.reset_index()
-
-    plot_sys = pivot_sys.melt(
-        id_vars='System',
-        value_vars=['Peak', 'Non-Peak'],
-        var_name='Type',
-        value_name='Energy'
-    )
+    system_peak = instrument_df.groupby(['System','Peak_Type'])['Energy'].sum().reset_index()
 
     fig_sys = px.bar(
-        plot_sys,
+        system_peak,
         x='System',
         y='Energy',
-        color='Type',
-        barmode='group',
-        title="System-wise Peak vs Non-Peak"
+        color='Peak_Type',
+        barmode='group'
     )
 
     st.plotly_chart(fig_sys, use_container_width=True)
 
-    st.success("🚀 Dashboard Running Successfully!")
+    st.success("🚀 Dashboard Ready!")
